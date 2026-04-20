@@ -1,5 +1,6 @@
 ARG CUDA_VERSION=12.8.1
-FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu24.04 AS base
+FROM docker.1ms.run/nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu24.04 AS base
+
 ARG TARGETARCH
 ARG GRACE_BLACKWELL=0
 ARG HOPPER_SBO=0
