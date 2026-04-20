@@ -7,13 +7,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout ktransformers official 0.5.3 code
+      - name: Checkout YOUR FORKED REPO (X666-CPU/ktransformers)
         uses: actions/checkout@v4
         with:
-          repository: approachingai/ktransformers
-          ref: v0.5.3
+          repository: X666-CPU/ktransformers
+          ref: main
 
-      - name: Fix locale-gen not found error in Dockerfile
+      - name: Auto fix locale-gen: not found error
         run: |
           sed -i 's|RUN locale-gen en_US.UTF-8|RUN apt-get update && apt-get install -y --no-install-recommends locales && rm -rf /var/lib/apt/lists/* \&\& locale-gen en_US.UTF-8|' docker/Dockerfile
 
@@ -27,7 +27,7 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USER }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      - name: Build Image for RTX 30 Series (PCIe Only, No NVLink)
+      - name: Build and Push Docker Image
         run: |
           docker build \
             --build-arg CUDA_VERSION=12.8.1 \
@@ -35,7 +35,5 @@ jobs:
             --build-arg UBUNTU_MIRROR=tsinghua \
             -f docker/Dockerfile \
             -t crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:0.5.3-30series-pcie .
-
-      - name: Push to Aliyun ACR
-        run: |
+          
           docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:0.5.3-30series-pcie
