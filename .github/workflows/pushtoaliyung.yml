@@ -1,5 +1,4 @@
-name: Build KTransformers from Source → Push to Aliyun ACR
-
+name: Build KTransformers → Push to Aliyun ACR
 on:
   workflow_dispatch:
 
@@ -7,45 +6,31 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout KTransformers 源码
+      - name: Checkout KTransformers 官方源码
         uses: actions/checkout@v4
         with:
           repository: kvcache-ai/ktransformers
           ref: main
 
-      - name: Set up Docker
+      - name: 设置 Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: 登录阿里云
+      - name: 登录阿里云 ACR
         uses: docker/login-action@v3
         with:
           registry: ${{ secrets.ALIYUN_REGISTRY }}
           username: ${{ secrets.ALIYUN_REGISTRY_USER }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      - name: 创建干净的 Dockerfile（无私有镜像）
+      # ✅ 关键：只在 YML 里覆盖 pip 源，不改 Dockerfile
+      - name: 构建镜像（强制使用官方 PyPI，自动解决 kt-kernel 0.5.3）
         run: |
-          cat > Dockerfile << 'EOF'
-          FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
-          ENV DEBIAN_FRONTEND=noninteractive
-          
-          RUN apt update && apt install -y python3-pip git
-          RUN pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-          
-          WORKDIR /app
-          COPY . .
-          
-          RUN pip3 install -e .
-          RUN pip3 install flashinfer sglang transformers accelerate uvicorn fastapi
-          
-          EXPOSE 8000
-          CMD ["python3", "ktransformers/server/balance_serve.py", "--host", "0.0.0.0", "--port", "8000"]
-          EOF
-
-      - name: 构建镜像
-        run: docker build -t ktransformers:latest .
+          docker build \
+            --build-arg PIP_EXTRA_INDEX_URL=https://pypi.org/simple \
+            --build-arg PIP_NO_CACHE_DIR=1 \
+            -f docker/Dockerfile \
+            -t crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest .
 
       - name: 推送到阿里云
         run: |
-          docker tag ktransformers:latest crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
           docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
