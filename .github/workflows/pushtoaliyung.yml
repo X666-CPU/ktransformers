@@ -10,7 +10,7 @@ jobs:
       - name: Checkout YOUR FORKED CODE
         uses: actions/checkout@v4
         with:
-          repository: X666-CPU/ktransformers  # 👈 改成你 GitHub 用户名
+          repository: X666-CPU/ktransformers
           ref: main
 
       - name: Set up Docker Buildx
@@ -23,10 +23,11 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USER }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      - name: Build Image
+      - name: Build Image (推理模式，关闭微调)
         run: |
           docker build \
             --build-arg CUDA_VERSION=12.8.1 \
+            --build-arg FUNCTIONALITY=infer \
             -f docker/Dockerfile \
             -t crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest .
 
