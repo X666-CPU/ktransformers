@@ -1,4 +1,4 @@
-ARG CUDA_VERSION=12.8.1
+ARG CUDA_VERSION=12.8.0
 FROM nvidia/cuda:${CUDA_VERSION}-cudnn-devel-ubuntu24.04 AS base
 
 ARG TARGETARCH
@@ -7,7 +7,6 @@ ARG HOPPER_SBO=0
 ARG CPU_VARIANT=x86-intel-multi
 ARG BUILD_ALL_CPU_VARIANTS=1
 
-# Proxy settings
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG http_proxy
@@ -21,97 +20,106 @@ ARG DEEPEP_COMMIT=9af0e0d0e74f3577af1979c9b9e1ac2cad0104ee
 ARG BUILD_AND_DOWNLOAD_PARALLEL=8
 ARG SGL_KERNEL_VERSION=0.3.19
 ARG GDRCOPY_VERSION=2.5.1
-ARG UBUNTU_MIRROR
+ARG UBUNTU_MIRROR=tsinghua
 ARG GITHUB_ARTIFACTORY=github.com
 ARG FLASHINFER_VERSION=0.5.3
+ARG PYTHON_VERSION=3.12
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    CUDA_HOME=/usr/local/cuda
+    CUDA_HOME=/usr/local/cuda \
+    CUDA_VERSION=${CUDA_VERSION}
 
 ENV PATH="${PATH}:/usr/local/nvidia/bin" \
     LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/usr/local/nvidia/lib:/usr/local/nvidia/lib64"
 
-# 使用清华源
+# 清华源
 RUN if [ -n "$UBUNTU_MIRROR" ]; then \
     echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ noble main restricted universe multiverse" > /etc/apt/sources.list && \
     echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ noble-updates main restricted universe multiverse" >> /etc/apt/sources.list && \
     echo "deb https://mirrors.tuna.tsinghua.edu.cn/ubuntu/ noble-backports main restricted universe multiverse" >> /etc/apt/sources.list && \
     echo "deb http://security.ubuntu.com/ubuntu/ noble-security main restricted universe multiverse" >> /etc/apt/sources.list && \
-    rm -f /etc/apt/sources.list.d/ubuntu.sources; \
+    rm -f /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true; \
 fi
 
-# 安装必需依赖
+# 依赖
 RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     apt-get update && apt-get install -y --no-install-recommends \
     tzdata ca-certificates curl wget git git-lfs \
     build-essential cmake patchelf vim htop zsh \
     libopenmpi-dev libnuma-dev numactl ffmpeg \
-    libibverbs-dev librdmacm1 libssl-dev libprotobuf-dev \
+    libibverbs-dev librdmacm1 libssl-dev libprotobuf-dev unzip \
     && rm -rf /var/lib/apt/lists/*
 
-#  locale
+# locale
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
+ENV TZ=Asia/Shanghai
 
-# Miniconda
-RUN mkdir -p /opt/miniconda3 \
-    && wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /opt/miniconda3/miniconda.sh \
+# Miniconda 跨架构支持
+RUN if [ "$TARGETARCH" = "arm64" ]; then \
+        MINICONDA_ARCH="aarch64"; \
+    else \
+        MINICONDA_ARCH="x86_64"; \
+    fi \
+    && mkdir -p /opt/miniconda3 \
+    && wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${MINICONDA_ARCH}.sh -O /opt/miniconda3/miniconda.sh \
     && bash /opt/miniconda3/miniconda.sh -b -u -p /opt/miniconda3 \
     && rm /opt/miniconda3/miniconda.sh
+
 ENV PATH="/opt/miniconda3/bin:${PATH}"
 
-# Conda 源
+# Conda 清华源
 RUN conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
-    && conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free \
+    && conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r \
+    && conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2 \
     && conda config --set show_channel_urls yes
 
 # ==============================================================================
-# 🔥 核心：彻底关闭 SFT，只保留推理 infer，彻底避开所有 404
-# ==============================================================================
 FROM base AS framework
-ARG CUDA_VERSION
-ARG BUILD_AND_DOWNLOAD_PARALLEL
-ARG SGL_KERNEL_VERSION
-ARG FLASHINFER_VERSION
-ARG DEEPEP_COMMIT
-ARG GITHUB_ARTIFACTORY
-ARG FUNCTIONALITY=infer
-
 WORKDIR /workspace
 
-# 只创建 serve 环境，不创建任何微调环境
-RUN conda create -n serve python=3.12 -y
-RUN /opt/miniconda3/envs/serve/bin/pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+# 自动计算 CUDA 版本号
+RUN case "$CUDA_VERSION" in \
+    12.8.*) CUINDEX=128 ;; \
+    12.7.*) CUINDEX=127 ;; \
+    12.6.*) CUINDEX=126 ;; \
+    12.5.*) CUINDEX=125 ;; \
+    *) CUINDEX=128 ;; \
+    esac && echo "CUINDEX=$CUINDEX" >> /etc/environment
 
-# 克隆代码
-RUN git clone --depth 1 https://${GITHUB_ARTIFACTORY}/kvcache-ai/ktransformers.git \
-    && cd ktransformers \
-    && git submodule update --init --recursive
+ENV CUINDEX=${CUINDEX}
+
+# 创建环境
+RUN conda create -n serve python=${PYTHON_VERSION} -y
+ENV PATH="/opt/miniconda3/envs/serve/bin:$PATH"
+
+RUN pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+
+# 安装 torch (必须先装)
+RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu${CUINDEX}
+
+# 克隆项目（本地代码）
+COPY . /workspace/ktransformers
+RUN cd /workspace/ktransformers && git submodule update --init --recursive || true
 RUN ln -s /workspace/ktransformers/third_party/sglang /workspace/sglang
 
-# ==============================================================================
-# 🔥 安装你需要的全部依赖
-# ==============================================================================
+# 基础依赖 + 你要的全部 6 个库
 RUN --mount=type=cache,target=/root/.cache/pip \
-    /opt/miniconda3/envs/serve/bin/pip install --upgrade pip setuptools wheel \
-        torchviz fire typer uvicorn fastapi pydantic
+    pip install --upgrade pip setuptools wheel \
+    torchviz fire typer uvicorn fastapi pydantic
 
-# 安装 sgl-kernel
+# sgl-kernel
 RUN --mount=type=cache,target=/root/.cache/pip \
-    case "$CUDA_VERSION" in \
-        12.8.1) CUINDEX=128 ;; \
-        *) CUINDEX=128 ;; \
-    esac \
-    && /opt/miniconda3/envs/serve/bin/pip install sgl-kernel==${SGL_KERNEL_VERSION}
+    pip install sgl-kernel==${SGL_KERNEL_VERSION}
 
-# 安装 sglang
+# sglang
 RUN --mount=type=cache,target=/root/.cache/pip \
     cd /workspace/sglang \
-    && /opt/miniconda3/envs/serve/bin/pip install -e "python[all]" --extra-index-url https://download.pytorch.org/whl/cu${CUINDEX}
+    && pip install -e "python[all]" --extra-index-url https://download.pytorch.org/whl/cu${CUINDEX}
 
 # FlashInfer
 RUN --mount=type=cache,target=/root/.cache/pip \
     FLASHINFER_CUBIN_DOWNLOAD_THREADS=${BUILD_AND_DOWNLOAD_PARALLEL} \
-    /opt/miniconda3/envs/serve/bin/python -m flashinfer --download-cubin
+    python -m flashinfer --download-cubin
 
 # DeepEP
 RUN curl -L https://${GITHUB_ARTIFACTORY}/deepseek-ai/DeepEP/archive/${DEEPEP_COMMIT}.zip -o /tmp/deepep.zip \
@@ -122,19 +130,20 @@ RUN curl -L https://${GITHUB_ARTIFACTORY}/deepseek-ai/DeepEP/archive/${DEEPEP_CO
 RUN --mount=type=cache,target=/root/.cache/pip \
     cd /workspace/DeepEP \
     && TORCH_CUDA_ARCH_LIST="9.0;10.0" MAX_JOBS=${BUILD_AND_DOWNLOAD_PARALLEL} \
-    /opt/miniconda3/envs/serve/bin/pip install --no-build-isolation .
+    && pip install --no-build-isolation .
 
 # NCCL
 RUN --mount=type=cache,target=/root/.cache/pip \
-    /opt/miniconda3/envs/serve/bin/pip install nvidia-nccl-cu12==2.28.3 --force-reinstall --no-deps
+    pip install nvidia-nccl-cu12==2.28.3 --force-reinstall --no-deps
 
 # kt-kernel
 RUN cd /workspace/ktransformers/kt-kernel \
-    && /opt/miniconda3/envs/serve/bin/python -m pip install -e .
+    && pip install -e .
 
-# 收尾
+# 自动激活环境
 RUN conda init bash
-RUN echo 'alias serve="conda activate serve"' >> /root/.bashrc
+RUN echo "conda activate serve" >> /root/.bashrc
+RUN echo "cd /workspace/ktransformers" >> /root/.bashrc
 
-WORKDIR /workspace
+WORKDIR /workspace/ktransformers
 CMD ["/bin/bash"]
