@@ -1,18 +1,15 @@
-name: Sync KTransformers to Aliyun ACR
+name: Pull KTransformers → Push to Aliyun ACR
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
-  sync:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Pull official ktransformers image
+        run: docker pull approachingai/ktransformers:latest
 
-      # 完全按你给的格式登录阿里云
       - name: Login to Aliyun ACR
         uses: docker/login-action@v3
         with:
@@ -20,18 +17,7 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USER }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      # 拉取官方最新镜像
-      - name: Pull official image
-        run: docker pull approachingai/ktransformers:latest
-
-      # 打标签成阿里云地址
-      - name: Tag images
+      - name: Tag and Push to ACR
         run: |
-          docker tag approachingai/ktransformers:latest ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:latest
-          docker tag approachingai/ktransformers:latest ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:${{ github.sha }}
-
-      # 直接推送！不使用 build-push！不会报错！
-      - name: Push to Aliyun
-        run: |
-          docker push ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:latest
-          docker push ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:${{ github.sha }}
+          docker tag approachingai/ktransformers:latest crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/mmshare:latest
+          docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/mmshare:latest
