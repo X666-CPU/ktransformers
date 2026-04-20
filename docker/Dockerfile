@@ -31,7 +31,7 @@ ARG FLASHINFER_VERSION=0.5.3
 
 # ktransformers wheel version (cu128torch28 for CUDA 12.8 + PyTorch 2.8)
 ARG KTRANSFORMERS_VERSION=0.5.3
-ARG KTRANSFORMERS_WHEEL=ktransformers-0.5.3+cu128torch28fancy-cp312-cp312-linux_x86_64.whl
+ARG KTRANSFORMERS_WHEEL=ktransformers-0.5.3+cu128torch28-cp312-cp312-linux_x86_64.whl
 
 # flash_attn wheel for fine-tune env
 ARG FLASH_ATTN_WHEEL=flash_attn-2.8.3+cu12torch2.8cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
@@ -59,7 +59,6 @@ RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     echo 'tzdata tzdata/Areas select America' | debconf-set-selections \
     && echo 'tzdata tzdata/Zones/America select Los_Angeles' | debconf-set-selections \
     && apt-get update && apt-get install -y --no-install-recommends --allow-change-held-packages \
-    # Core system utilities
     tzdata \
     ca-certificates \
     software-properties-common \
@@ -71,7 +70,6 @@ RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     wget \
     lsof \
     locales \
-    # Build essentials
     build-essential \
     cmake \
     perl \
@@ -79,14 +77,11 @@ RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     ccache \
     git \
     git-lfs \
-    # MPI and NUMA
     libopenmpi-dev \
     libnuma1 \
     libnuma-dev \
     numactl \
-    # transformers multimodal VLM
     ffmpeg \
-    # InfiniBand/RDMA
     libibverbs-dev \
     libibverbs1 \
     libibumad3 \
@@ -98,7 +93,6 @@ RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     ibverbs-providers \
     infiniband-diags \
     perftest \
-    # Development libraries
     libgoogle-glog-dev \
     libgtest-dev \
     libjsoncpp-dev \
@@ -116,7 +110,6 @@ RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     libczmq4 \
     libczmq-dev \
     libfabric-dev \
-    # Package building tools
     devscripts \
     debhelper \
     fakeroot \
@@ -124,7 +117,6 @@ RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     check \
     libsubunit0 \
     libsubunit-dev \
-    # Development tools
     gdb \
     ninja-build \
     vim \
@@ -134,7 +126,6 @@ RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     tree \
     less \
     rdma-core \
-    # NCCL
     libnccl2 \
     libnccl-dev \
     && rm -rf /var/lib/apt/lists/* \
@@ -168,14 +159,11 @@ RUN mkdir -p /opt/miniconda3 \
     && bash /opt/miniconda3/miniconda.sh -b -u -p /opt/miniconda3 \
     && rm /opt/miniconda3/miniconda.sh
 
-# Add conda to PATH
 ENV PATH="/opt/miniconda3/bin:${PATH}"
 
-# Accept conda TOS
 RUN conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main \
     && conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
 
-# Configure conda to use Tsinghua mirror
 RUN conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
     && conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free \
     && conda config --set show_channel_urls yes
@@ -205,17 +193,14 @@ ARG FUNCTIONALITY=sft
 
 WORKDIR /workspace
 
-# Create conda environments (fine-tune only needed for sft mode)
 RUN conda create -n serve python=3.12 -y \
     && if [ "$FUNCTIONALITY" = "sft" ]; then conda create -n fine-tune python=3.12 -y; fi
 
-# Set pip mirror for conda envs
 RUN /opt/miniconda3/envs/serve/bin/pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple \
     && if [ "$FUNCTIONALITY" = "sft" ]; then \
         /opt/miniconda3/envs/fine-tune/bin/pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple; \
     fi
 
-# Clone repositories (sglang is included as a submodule in ktransformers)
 RUN git clone --depth 1 https://${GITHUB_ARTIFACTORY}/kvcache-ai/ktransformers.git /workspace/ktransformers \
     && cd /workspace/ktransformers && git submodule update --init --recursive \
     && ln -s /workspace/ktransformers/third_party/sglang /workspace/sglang \
@@ -235,14 +220,22 @@ RUN if [ "$FUNCTIONALITY" = "sft" ]; then \
 # Environment 1: serve (sglang + kt-kernel)
 ########################################################
 
-# Upgrade pip and install basic tools in serve env
 RUN --mount=type=cache,target=/root/.cache/pip \
     /opt/miniconda3/envs/serve/bin/pip install --upgrade pip setuptools wheel html5lib six
 
-# Install sgl-kernel
+# ========== 🔥 在这里安装你要的所有依赖（serve 环境） ==========
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /opt/miniconda3/envs/serve/bin/pip install \
+        torchviz \
+        fire \
+        typer \
+        uvicorn \
+        fastapi \
+        pydantic
+
 RUN --mount=type=cache,target=/root/.cache/pip \
     case "$CUDA_VERSION" in \
-        12.6.1) CUINDEX=126 ;; \
+        12.6.1) CUINDEX=124 ;; \
         12.8.1) CUINDEX=128 ;; \
         12.9.1) CUINDEX=129 ;; \
         13.0.1) CUINDEX=130 ;; \
@@ -259,7 +252,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     ; \
     fi
 
-# Install SGLang in serve env (version aligned with ktransformers)
 RUN --mount=type=cache,target=/root/.cache/pip \
     case "$CUDA_VERSION" in \
         12.6.1) CUINDEX=126 ;; \
@@ -268,16 +260,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         13.0.1) CUINDEX=130 ;; \
     esac \
     && export SGLANG_KT_VERSION=$(python3 -c "exec(open('/workspace/ktransformers/version.py').read()); print(__version__)") \
-    && echo "Installing sglang-kt v${SGLANG_KT_VERSION}" \
     && cd /workspace/sglang \
     && /opt/miniconda3/envs/serve/bin/pip install -e "python[all]" --extra-index-url https://download.pytorch.org/whl/cu${CUINDEX}
 
-# Download FlashInfer cubin for serve env
 RUN --mount=type=cache,target=/root/.cache/pip \
     FLASHINFER_CUBIN_DOWNLOAD_THREADS=${BUILD_AND_DOWNLOAD_PARALLEL} FLASHINFER_LOGGING_LEVEL=warning \
     /opt/miniconda3/envs/serve/bin/python -m flashinfer --download-cubin
 
-# Install DeepEP in serve env
 RUN set -eux; \
     if [ "$GRACE_BLACKWELL" = "1" ]; then \
       git clone https://github.com/fzyzcjy/DeepEP.git /workspace/DeepEP && \
@@ -310,7 +299,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     TORCH_CUDA_ARCH_LIST="${CHOSEN_TORCH_CUDA_ARCH_LIST}" MAX_JOBS=${BUILD_AND_DOWNLOAD_PARALLEL} \
     pip install --no-build-isolation .
 
-# Install NCCL for serve env
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ "${CUDA_VERSION%%.*}" = "12" ]; then \
         /opt/miniconda3/envs/serve/bin/pip install nvidia-nccl-cu12==2.28.3 --force-reinstall --no-deps ; \
@@ -318,7 +306,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
         /opt/miniconda3/envs/serve/bin/pip install nvidia-nccl-cu13==2.28.3 --force-reinstall --no-deps ; \
     fi
 
-# Install kt-kernel in serve env with all CPU variants
 RUN . /opt/miniconda3/etc/profile.d/conda.sh && conda activate serve \
     && cd /workspace/ktransformers/kt-kernel \
     && CPUINFER_BUILD_ALL_VARIANTS=1 ./install.sh build
@@ -327,13 +314,23 @@ RUN . /opt/miniconda3/etc/profile.d/conda.sh && conda activate serve \
 # Environment 2: fine-tune (LLaMA-Factory + ktransformers) - sft mode only
 ########################################################
 
-# Install dependency libraries for ktransformers (CUDA 11.8 runtime required)
 RUN if [ "$FUNCTIONALITY" = "sft" ]; then \
         conda install -n fine-tune -y -c conda-forge libstdcxx-ng gcc_impl_linux-64 \
         && conda install -n fine-tune -y -c nvidia/label/cuda-11.8.0 cuda-runtime; \
     fi
 
-# Install PyTorch 2.8 in fine-tune env
+# ========== 🔥 同时在 fine-tune 环境也安装 ==========
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ "$FUNCTIONALITY" = "sft" ]; then \
+        /opt/miniconda3/envs/fine-tune/bin/pip install \
+            torchviz \
+            fire \
+            typer \
+            uvicorn \
+            fastapi \
+            pydantic; \
+    fi
+
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ "$FUNCTIONALITY" = "sft" ]; then \
         case "$CUDA_VERSION" in \
@@ -350,26 +347,22 @@ RUN --mount=type=cache,target=/root/.cache/pip \
             --extra-index-url https://download.pytorch.org/whl/cu${CUINDEX}; \
     fi
 
-# Install LLaMA-Factory in fine-tune env
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ "$FUNCTIONALITY" = "sft" ]; then \
         cd /workspace/LLaMA-Factory \
         && /opt/miniconda3/envs/fine-tune/bin/pip install -e ".[torch,metrics]" --no-build-isolation; \
     fi
 
-# Install ktransformers wheel in fine-tune env
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ "$FUNCTIONALITY" = "sft" ]; then \
         /opt/miniconda3/envs/fine-tune/bin/pip install /workspace/${KTRANSFORMERS_WHEEL}; \
     fi
 
-# Install flash_attn wheel in fine-tune env
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ "$FUNCTIONALITY" = "sft" ]; then \
         /opt/miniconda3/envs/fine-tune/bin/pip install /workspace/${FLASH_ATTN_WHEEL}; \
     fi
 
-# Install NCCL for fine-tune env
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ "$FUNCTIONALITY" = "sft" ]; then \
         if [ "${CUDA_VERSION%%.*}" = "12" ]; then \
@@ -383,15 +376,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Cleanup and final setup
 ########################################################
 
-# Clean up downloaded wheels
 RUN if [ "$FUNCTIONALITY" = "sft" ]; then \
         rm -f /workspace/${KTRANSFORMERS_WHEEL} /workspace/${FLASH_ATTN_WHEEL}; \
     fi
 
-# Initialize conda for bash
 RUN /opt/miniconda3/bin/conda init bash
 
-# Create shell aliases for convenience
 RUN echo '\n# Conda environment aliases\nalias serve="conda activate serve"' >> /root/.bashrc \
     && if [ "$FUNCTIONALITY" = "sft" ]; then \
         echo 'alias finetune="conda activate fine-tune"' >> /root/.bashrc; \
@@ -401,32 +391,20 @@ RUN echo '\n# Conda environment aliases\nalias serve="conda activate serve"' >> 
 # Extract version information for image naming
 ########################################################
 
-# Extract versions from each component and save to versions.env
 RUN set -x && \
-    # KTransformers version (single source of truth for both kt-kernel and sglang-kt)
     cd /workspace/ktransformers && \
     KTRANSFORMERS_VERSION=$(python3 -c "exec(open('version.py').read()); print(__version__)" 2>/dev/null || echo "unknown") && \
     echo "KTRANSFORMERS_VERSION=$KTRANSFORMERS_VERSION" > /workspace/versions.env && \
     echo "Extracted KTransformers version: $KTRANSFORMERS_VERSION" && \
-    \
-    # sglang-kt version = ktransformers version (aligned)
     echo "SGLANG_KT_VERSION=$KTRANSFORMERS_VERSION" >> /workspace/versions.env && \
-    echo "sglang-kt version (aligned): $KTRANSFORMERS_VERSION" && \
-    \
-    # LLaMA-Factory version (from fine-tune environment, sft mode only)
     if [ "$FUNCTIONALITY" = "sft" ]; then \
         . /opt/miniconda3/etc/profile.d/conda.sh && conda activate fine-tune && \
         cd /workspace/LLaMA-Factory && \
         LLAMAFACTORY_VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from llamafactory import __version__; print(__version__)" 2>/dev/null || echo "unknown") && \
-        echo "LLAMAFACTORY_VERSION=$LLAMAFACTORY_VERSION" >> /workspace/versions.env && \
-        echo "Extracted LLaMA-Factory version: $LLAMAFACTORY_VERSION"; \
+        echo "LLAMAFACTORY_VERSION=$LLAMAFACTORY_VERSION" >> /workspace/versions.env; \
     else \
-        echo "LLAMAFACTORY_VERSION=none" >> /workspace/versions.env && \
-        echo "LLaMA-Factory not installed (infer mode)"; \
+        echo "LLAMAFACTORY_VERSION=none" >> /workspace/versions.env; \
     fi && \
-    \
-    # Display all versions
-    echo "=== Version Summary ===" && \
     cat /workspace/versions.env
 
 WORKDIR /workspace
