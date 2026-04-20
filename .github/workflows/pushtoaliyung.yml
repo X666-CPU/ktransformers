@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Pull official ktransformers image
-        run: docker pull approachingai/ktransformers:v0.5.3-cu128
+        run: docker pull approachingai/ktransformers:v0.5.2.post1
 
       - name: Login to Aliyun ACR
         uses: docker/login-action@v3
