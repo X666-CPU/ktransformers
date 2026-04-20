@@ -19,5 +19,5 @@ jobs:
 
       - name: Tag and Push to ACR
         run: |
-          docker tag approachingai/ktransformers:latest crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
-          docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
+          docker tag approachingai/ktransformers:v0.5.3 crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:v0.5.3
+          docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:v0.5.3
