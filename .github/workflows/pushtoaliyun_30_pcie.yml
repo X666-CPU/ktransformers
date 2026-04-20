@@ -1,52 +1,41 @@
-services:
-  ktransformers-qwen:
-    image: approachingai/ktransformers:v0.5.3-cu129
-    container_name: ktransformers-qwen
-    restart: unless-stopped
-    ipc: host
-    shm_size: 32g
+name: Build KTransformers 0.5.3 for RTX 30 Series → Push to Aliyun ACR
 
-    ports:
-      - "11435:8000"
+on:
+  workflow_dispatch:
 
-    volumes:
-      - /root/models/ktf/Qwen3.6-35B-A3B-AWQ:/models:ro
-      - /root/models/ktf/ktransformers_config:/workspace/config:ro
-      - /etc/localtime:/etc/localtime:ro
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ktransformers official 0.5.3 code
+        uses: actions/checkout@v4
+        with:
+          repository: approachingai/ktransformers
+          ref: v0.5.3
 
-    environment:
-      - CUDA_VISIBLE_DEVICES=0,1
-      - USE_KERNEL=1
-      - KTRANSFORMERS_FORCE_CPU_EXPERTS=0
-      - NVIDIA_CUDA_CACHEDIR=/tmp
-      - CUDA_CACHE_MAXSIZE=2147483648
+      - name: Fix locale-gen not found error in Dockerfile
+        run: |
+          sed -i 's|RUN locale-gen en_US.UTF-8|RUN apt-get update && apt-get install -y --no-install-recommends locales && rm -rf /var/lib/apt/lists/* \&\& locale-gen en_US.UTF-8|' docker/Dockerfile
 
-    command: >
-      bash -c "
-      source /opt/miniconda3/etc/profile.d/conda.sh &&
-      conda activate serve &&
-      pip install torchvision pillow --no-deps &&
-      python -m ktransformers.local_chat
-        --model_path /models
-        --optimize_rule_path /workspace/config/Qwen-35B-multi-gpu.yaml
-        --max_sequence_length 32768
-        --keep_tokens_length 20000
-        --max_new_tokens 2048
-        --max_batch_size 4
-        --chunked_prefill_size 2048
-        --use_cuda_graph
-        --gpu_mem_util 0.90
-        --trust_remote_code
-        --attn_optimize sdp
-        --disable_log_stats
-        --vision
-        --max_num_images 2
-      "
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['0','1']
-              capabilities: [gpu, compute]
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Build Image for RTX 30 Series (PCIe Only, No NVLink)
+        run: |
+          docker build \
+            --build-arg CUDA_VERSION=12.8.1 \
+            --build-arg FUNCTIONALITY=infer \
+            --build-arg UBUNTU_MIRROR=tsinghua \
+            -f docker/Dockerfile \
+            -t crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:0.5.3-30series-pcie .
+
+      - name: Push to Aliyun ACR
+        run: |
+          docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:0.5.3-30series-pcie
