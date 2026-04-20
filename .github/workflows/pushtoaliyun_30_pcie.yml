@@ -18,11 +18,12 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USER }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      - name: Build 精简稳妥版
+      - name: Build 30系专用版
         run: |
           docker build \
             --build-arg CUDA_VERSION=12.8.1 \
             --build-arg FUNCTIONALITY=infer \
+            --build-arg TORCH_CUDA_ARCH_LIST="8.6" \
             -f docker/Dockerfile \
             -t crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:0.5.3-30series-pcie .
 
