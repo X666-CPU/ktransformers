@@ -1,4 +1,4 @@
-name: Build KTransformers → Push to Aliyun ACR
+name: Build KTransformers → Push to Aliyun
 
 on:
   workflow_dispatch:
@@ -7,10 +7,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout KTransformers
+      - name: Checkout KTransformers official repo
         uses: actions/checkout@v4
         with:
           repository: kvcache-ai/ktransformers
+          ref: main
           fetch-depth: 1
 
       - name: Set up Docker Buildx
@@ -23,13 +24,14 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USER }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      - name: Build image with NVIDIA CUDA
+      - name: Build official KTransformers image (correct path)
         run: |
           docker build \
-            --build-arg BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 \
-            -t ktransformers .
+            --build-arg CUDA_VERSION=12.8.1 \
+            -f ./docker/Dockerfile \
+            -t ktransformers:official .
 
       - name: Tag and Push to Aliyun
         run: |
-          docker tag ktransformers crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
+          docker tag ktransformers:official crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
           docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
