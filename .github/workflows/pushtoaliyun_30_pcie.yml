@@ -1,4 +1,4 @@
-name: Build KTransformers 0.5.3 30系PCIe极简版
+name: Build KTransformers 0.5.3 30系PCIe专用版
 on:
   workflow_dispatch:
 
@@ -18,7 +18,7 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USER }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      - name: Build
+      - name: Build 精简稳妥版
         run: |
           docker build \
             --build-arg CUDA_VERSION=12.8.1 \
@@ -26,6 +26,6 @@ jobs:
             -f docker/Dockerfile \
             -t crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:0.5.3-30series-pcie .
 
-      - name: Push
+      - name: Push to Aliyun
         run: |
           docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:0.5.3-30series-pcie
