@@ -3,15 +3,18 @@ FROM nvidia/cuda:${CUDA_VERSION}-cudnn-runtime-ubuntu24.04 AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# 最小系统依赖
+# 【修复】安装完整 Python + pip + 编译依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tzdata ca-certificates git git-lfs python3.12 python3-pip python3.12-dev \
+    tzdata ca-certificates git git-lfs \
+    python3 python3-pip python3-dev python3-venv \
     build-essential cmake patchelf libnuma1 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 安装 PyTorch 用于编译（必须）
-RUN python3.12 -m ensurepip && python3.12 -m pip install -U pip
-RUN python3.12 -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+# 升级 pip
+RUN python3 -m pip install -U pip
+
+# 安装 PyTorch（编译必须）
+RUN python3 -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128
 
 # 克隆代码
 RUN git clone --depth 1 --branch v0.5.3 https://github.com/kvcache-ai/ktransformers /workspace/ktransformers
@@ -30,30 +33,30 @@ COPY --from=base /workspace/ktransformers /workspace/ktransformers
 
 # 最小运行依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.12 python3-pip libnuma1 libgomp1 git \
+    python3 python3-pip libnuma1 libgomp1 git \
     && rm -rf /var/lib/apt/lists/*
 
 # pip 清华源
-RUN python3.12 -m pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
+RUN python3 -m pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 
-# 安装依赖（仅推理）
-RUN python3.12 -m pip install -U pip wheel
-RUN python3.12 -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128
-RUN python3.12 -m pip install sgl-kernel==0.3.19
-RUN python3.12 -m pip install flash-attn==2.8.3 --no-build-isolation
+# 安装推理依赖
+RUN python3 -m pip install -U pip wheel
+RUN python3 -m pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+RUN python3 -m pip install sgl-kernel==0.3.19
+RUN python3 -m pip install flash-attn==2.8.3 --no-build-isolation
 
 # 安装 sglang
 RUN cd /workspace/ktransformers/third_party/sglang \
-    && python3.12 -m pip install -e "python[all]"
+    && python3 -m pip install -e "python[all]"
 
 # 安装 ktransformers
 RUN cd /workspace/ktransformers \
-    && python3.12 -m pip install .
+    && python3 -m pip install .
 
-# 清理
-RUN python3.12 -m pip cache purge
+# 清理缓存
+RUN python3 -m pip cache purge
 
-# PCIe 3.0 / 无NVLink 优化
+# 无NVLink + PCIe 3.0 优化
 ENV NCCL_IB_DISABLE=1 \
     NCCL_P2P_DISABLE=0 \
     NCCL_ALGO=RING \
