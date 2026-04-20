@@ -7,8 +7,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout KTransformers
         uses: actions/checkout@v4
+        with:
+          repository: kvcache-ai/ktransformers
+          fetch-depth: 1
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -20,10 +23,13 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USER }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          context: https://github.com/kvcache-ai/ktransformers.git
-          file: https://raw.githubusercontent.com/kvcache-ai/ktransformers/main/Dockerfile
-          push: true
-          tags: crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
+      - name: Build image with NVIDIA CUDA
+        run: |
+          docker build \
+            --build-arg BASE_IMAGE=nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 \
+            -t ktransformers .
+
+      - name: Tag and Push to Aliyun
+        run: |
+          docker tag ktransformers crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
+          docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:latest
