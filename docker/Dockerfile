@@ -67,15 +67,21 @@ RUN if [ "$TARGETARCH" = "arm64" ]; then \
 
 ENV PATH="/opt/miniconda3/bin:${PATH}"
 
-# Conda 清华源
-RUN conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main \
-    && conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r \
-    && conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2 \
-    && conda config --set show_channel_urls yes
+# Conda 清华源 + 关闭默认源 + 接受TOS
+RUN conda config --remove-key channels && \
+    conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main && \
+    conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/r && \
+    conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/msys2 && \
+    conda config --set show_channel_urls yes && \
+    conda config --set default_channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main && \
+    conda tos accept --channel https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main
 
 # ==============================================================================
 FROM base AS framework
 WORKDIR /workspace
+
+ARG PYTHON_VERSION=3.12
+ARG CUDA_VERSION
 
 # 自动计算 CUDA 版本号
 RUN case "$CUDA_VERSION" in \
@@ -88,21 +94,21 @@ RUN case "$CUDA_VERSION" in \
 
 ENV CUINDEX=${CUINDEX}
 
-# 创建环境
-RUN conda create -n serve python=${PYTHON_VERSION} -y
+# 创建环境（修复版）
+RUN conda create -n serve python=3.12 -y
 ENV PATH="/opt/miniconda3/envs/serve/bin:$PATH"
 
 RUN pip config set global.index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
 
-# 安装 torch (必须先装)
+# 安装 torch
 RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu${CUINDEX}
 
-# 克隆项目（本地代码）
+# 克隆项目
 COPY . /workspace/ktransformers
 RUN cd /workspace/ktransformers && git submodule update --init --recursive || true
 RUN ln -s /workspace/ktransformers/third_party/sglang /workspace/sglang
 
-# 基础依赖 + 你要的全部 6 个库
+# 安装全部依赖（含你要的6个）
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip setuptools wheel \
     torchviz fire typer uvicorn fastapi pydantic
