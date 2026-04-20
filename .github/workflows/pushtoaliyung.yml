@@ -1,18 +1,18 @@
-name: Sync KTransformers to Aliyun ACR 直接下载后推送
+name: Sync KTransformers to Aliyun ACR
 
 on:
-  workflow_dispatch:  # 手动运行
+  workflow_dispatch:
   push:
     branches: [ main ]
 
 jobs:
-  build:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 完全和你一样的阿里云登录方式
+      # 完全按你给的格式登录阿里云
       - name: Login to Aliyun ACR
         uses: docker/login-action@v3
         with:
@@ -21,21 +21,17 @@ jobs:
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
       # 拉取官方最新镜像
-      - name: Pull official latest image
+      - name: Pull official image
         run: docker pull approachingai/ktransformers:latest
 
-      # 打标签（指向你的阿里云地址）
-      - name: Tag image for Aliyun
+      # 打标签成阿里云地址
+      - name: Tag images
         run: |
           docker tag approachingai/ktransformers:latest ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:latest
           docker tag approachingai/ktransformers:latest ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:${{ github.sha }}
 
-      # 推送到阿里云（和你格式一致）
-      - name: Push to Aliyun ACR
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:latest
-            ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:${{ github.sha }}
+      # 直接推送！不使用 build-push！不会报错！
+      - name: Push to Aliyun
+        run: |
+          docker push ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:latest
+          docker push ${{ secrets.ALIYUN_REGISTRY }}/ktransformers:${{ github.sha }}
