@@ -1,0 +1,29 @@
+name: Sync Official KTransformers 0.5.3 → Push to Aliyun ACR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Aliyun ACR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.ALIYUN_REGISTRY }}
+          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Pull Official ktransformers Image
+        run: docker pull ghcr.io/kvc000/ktransformers:0.5.3
+
+      - name: Tag Image for Aliyun ACR
+        run: |
+          docker tag ghcr.io/kvc000/ktransformers:0.5.3 crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:0.5.3-30series-pcie
+
+      - name: Push to Aliyun ACR
+        run: |
+          docker push crpi-79o3tt0rozrf74vm.cn-chengdu.personal.cr.aliyuncs.com/momings/ktransformers:0.5.3-30series-pcie
