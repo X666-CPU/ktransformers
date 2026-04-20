@@ -50,9 +50,7 @@ RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     && rm -rf /var/lib/apt/lists/*
 
 #  locale
-RUN locale-gen en_US.UTF-8
-ENV LANG=en_US.UTF-8 \
-    LC_ALL=en_US.UTF-8
+ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 
 # Miniconda
 RUN mkdir -p /opt/miniconda3 \
