@@ -61,8 +61,14 @@ RUN --mount=type=cache,target=/var/cache/apt,id=base-apt \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Locale
-RUN locale-gen en_US.UTF-8
+# ============================
+# Locale 修复版（无 127 错误）
+# ============================
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends locales && \
+    rm -rf /var/lib/apt/lists/* && \
+    locale-gen en_US.UTF-8
+
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
